@@ -7,10 +7,31 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 
+from selenium.webdriver.chrome.service import Service
+import shutil
+
 # Configuration
 BASE_URL = os.getenv("CHAKORA_BASE_URL", "https://chakorahub.com").rstrip("/")
 LOCAL_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "chakora-website" / "templates"
 HEADLESS = os.getenv("HEADLESS", "true").lower() in ("true", "1", "yes")
+
+
+def get_chromedriver_service():
+    """Finds cached or local chromedriver binary to prevent network blocking."""
+    # 1. Check local selenium cache directory
+    cache_base = Path.home() / ".cache" / "selenium" / "chromedriver"
+    if cache_base.exists():
+        found = list(cache_base.rglob("chromedriver.exe")) or list(cache_base.rglob("chromedriver"))
+        if found:
+            return Service(executable_path=str(found[0]))
+
+    # 2. Check system PATH
+    path_driver = shutil.which("chromedriver") or shutil.which("chromedriver.exe")
+    if path_driver:
+        return Service(executable_path=path_driver)
+
+    # 3. Fallback to Selenium Manager default
+    return Service()
 
 
 @pytest.fixture(scope="module")
@@ -24,8 +45,10 @@ def driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--ignore-certificate-errors")
+    options.page_load_strategy = "eager"
 
-    web_driver = webdriver.Chrome(options=options)
+    service = get_chromedriver_service()
+    web_driver = webdriver.Chrome(service=service, options=options)
     web_driver.set_window_size(1920, 1080)
     web_driver.implicitly_wait(5)
     yield web_driver
